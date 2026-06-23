@@ -5,6 +5,11 @@ import express from "express";
 import cors from "cors";
 import { supabase } from "./supabase";
 import { AuthRequest } from "./types/authRequest";
+import productRoutes from "./products";
+import salesRoutes from "./routes/sales";
+import expensesRoutes from "./routes/expenses";
+
+
 
 const app = express();
 
@@ -13,9 +18,16 @@ app.use(express.json());
 
 
 
+app.use("/products", productRoutes);
+app.use("/sales", salesRoutes);
+app.use("/expenses", expensesRoutes);
+
 /* =========================
    📅 APPOINTMENTS
 ========================= */
+
+
+
 
 // GET all appointments (con paciente incluido)
 app.get("/appointments", authMiddleware, async (req: AuthRequest, res) => {
@@ -51,10 +63,113 @@ if (nutriError || !nutritionist) {
   res.json(data);
 });
 
+//tipos de citas
+
+app.get("/appointment-types", authMiddleware, async (req: AuthRequest, res) => {
+  const userId = req.user!.id;
+
+  const { data: nutritionist, error } = await supabase
+    .from("nutritionists")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !nutritionist) {
+    return res.status(403).json({ error: "Nutritionist not found" });
+  }
+
+  const { data, error: fetchError } = await supabase
+    .from("appointment_types")
+    .select("*")
+    .eq("nutritionist_id", nutritionist.id)
+    .eq("active", true)
+    .order("created_at", { ascending: true });
+
+  if (fetchError) {
+    return res.status(500).json(fetchError);
+  }
+
+  res.json(data);
+});
+
+
+app.post("/appointment-types", authMiddleware, async (req: AuthRequest, res) => {
+  const userId = req.user!.id;
+
+  const { data: nutritionist, error } = await supabase
+    .from("nutritionists")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !nutritionist) {
+    return res.status(403).json({ error: "Nutritionist not found" });
+  }
+
+  const { name, description, price, duration_minutes } = req.body;
+
+  const { data, error: insertError } = await supabase
+    .from("appointment_types")
+    .insert([
+      {
+        name,
+        description,
+        price,
+        duration_minutes,
+        nutritionist_id: nutritionist.id,
+      },
+    ])
+    .select()
+    .single();
+
+  if (insertError) {
+    return res.status(500).json(insertError);
+  }
+
+  res.json(data);
+});
+
+app.patch("/appointment-types/:id", authMiddleware, async (req: AuthRequest, res) => {
+  const { id } = req.params;
+
+  const { data, error } = await supabase
+    .from("appointment_types")
+    .update(req.body)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json(error);
+
+  res.json(data);
+});
+
+app.delete("/appointment-types/:id", authMiddleware, async (req: AuthRequest, res) => {
+  const { id } = req.params;
+
+  const { error } = await supabase
+    .from("appointment_types")
+    .update({ active: false })
+    .eq("id", id);
+
+  if (error) return res.status(500).json(error);
+
+  res.json({ ok: true });
+});
 
 // CREATE appointment
 app.post("/appointments", authMiddleware, async (req: AuthRequest, res) => {
-  const { patient_id, date, notes, status, duration_minutes } = req.body;
+const {
+  patient_id,
+  date,
+  notes,
+  status,
+  duration_minutes,
+  appointment_type_id,
+  price,
+  payment_method,
+  is_clinical,
+} = req.body;
   const userId = req.user!.id;
   const { data: nutritionist } = await supabase
   .from("nutritionists")
@@ -91,20 +206,24 @@ app.post("/appointments", authMiddleware, async (req: AuthRequest, res) => {
   }
 
   // 4. si está libre → insert
-  const { data, error } = await supabase
-    .from("appointments")
-    .insert([
-      {
-        patient_id,
-         nutritionist_id: nutritionist.id,
-        date,
-        notes,
-        status: status ?? "pending",
-        duration_minutes: duration_minutes ?? 30,
-      },
-    ])
-    .select()
-    .single();
+ const { data, error } = await supabase
+  .from("appointments")
+  .insert([
+    {
+      patient_id,
+      nutritionist_id: nutritionist.id,
+      date,
+      notes,
+      status: status ?? "pending",
+      is_clinical,
+      duration_minutes: duration_minutes ?? 30,
+      appointment_type_id,
+      price,
+      payment_method,
+    },
+  ])
+  .select()
+  .single();
 
   if (error) return res.status(500).json(error);
 
@@ -140,7 +259,7 @@ app.get("/availability", authMiddleware, async (req: AuthRequest, res) => {
 });
 
 
-// UPDATE appointment (status / notes / date)
+
 // app.patch("/appointments/:id", async (req, res) => {
 //   const { id } = req.params;
 
@@ -264,6 +383,33 @@ app.get("/patients/:id", authMiddleware, async (req: AuthRequest, res) => {
   res.json(patient);
 });
 
+app.patch("/patients/:id", authMiddleware, async (req: AuthRequest, res) => {
+  const userId = req.user!.id;
+  const { id } = req.params;
+
+  const { data: nutritionist, error: nutriError } = await supabase
+    .from("nutritionists")
+    .select("*")
+    .eq("user_id", userId)
+    .single();
+
+  if (nutriError || !nutritionist) {
+    return res.status(403).json({ error: "Nutritionist not found" });
+  }
+
+  const { data, error } = await supabase
+    .from("patients")
+    .update(req.body)
+    .eq("id", id)
+    .eq("nutritionist_id", nutritionist.id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json(error);
+
+  res.json(data);
+});
+
 app.get("/patients/:id/appointments", authMiddleware, async (req: AuthRequest, res) => {
   const userId = req.user!.id;
 
@@ -275,17 +421,28 @@ app.get("/patients/:id/appointments", authMiddleware, async (req: AuthRequest, r
 
   const { id } = req.params;
 
-  const { data, error } = await supabase
-    .from("appointments")
-    .select("*")
-    .eq("nutritionist_id", nutritionist.id)
-    .eq("patient_id", id)
-    .order("date", { ascending: false });
+ const { data, error } = await supabase
+  .from("appointments")
+  .select(`
+    *,
+    appointment_types (
+      id,
+      name,
+      duration_minutes,
+      price
+    )
+  `)
+  .eq("nutritionist_id", nutritionist.id)
+  .eq("patient_id", id)
+  .order("date", { ascending: false });
 
   res.json(data);
 });
 
-app.patch("/appointments/:id", async (req, res) => {
+app.patch(
+  "/appointments/:id",
+  authMiddleware,
+  async (req: AuthRequest, res) => {
   const { id } = req.params;
 
   const { data, error } = await supabase
