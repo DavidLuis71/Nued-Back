@@ -8,6 +8,9 @@ import { AuthRequest } from "./types/authRequest";
 import productRoutes from "./products";
 import salesRoutes from "./routes/sales";
 import expensesRoutes from "./routes/expenses";
+import scheduleRoutes from "./routes/schedule";
+import foodRoutes from "./routes/food";
+import nutritionRoutes from "./routes/nutrition";
 
 
 
@@ -21,6 +24,9 @@ app.use(express.json());
 app.use("/products", productRoutes);
 app.use("/sales", salesRoutes);
 app.use("/expenses", expensesRoutes);
+app.use("/schedule", scheduleRoutes);
+app.use("/food", foodRoutes);
+app.use("/nutrition", nutritionRoutes);
 
 /* =========================
    📅 APPOINTMENTS
@@ -231,32 +237,32 @@ const {
 });
 
 
-app.get("/availability", authMiddleware, async (req: AuthRequest, res) => {
-  const userId = req.user!.id;
 
-  const { data: nutritionist } = await supabase
-    .from("nutritionists")
-    .select("*")
-    .eq("user_id", userId)
-    .single();
+//   const userId = req.user!.id;
 
-  const { date } = req.query;
+//   const { data: nutritionist } = await supabase
+//     .from("nutritionists")
+//     .select("*")
+//     .eq("user_id", userId)
+//     .single();
 
-  const startOfDay = new Date(date as string);
-  startOfDay.setHours(0, 0, 0, 0);
+//   const { date } = req.query;
 
-  const endOfDay = new Date(date as string);
-  endOfDay.setHours(23, 59, 59, 999);
+//   const startOfDay = new Date(date as string);
+//   startOfDay.setHours(0, 0, 0, 0);
 
-  const { data, error } = await supabase
-    .from("appointments")
-    .select("*")
-    .eq("nutritionist_id", nutritionist.id)
-    .gte("date", startOfDay.toISOString())
-    .lte("date", endOfDay.toISOString());
+//   const endOfDay = new Date(date as string);
+//   endOfDay.setHours(23, 59, 59, 999);
 
-  res.json(data);
-});
+//   const { data, error } = await supabase
+//     .from("appointments")
+//     .select("*")
+//     .eq("nutritionist_id", nutritionist.id)
+//     .gte("date", startOfDay.toISOString())
+//     .lte("date", endOfDay.toISOString());
+
+//   res.json(data);
+// });
 
 
 
@@ -335,7 +341,16 @@ app.post("/patients", authMiddleware, async (req: AuthRequest, res) => {
     return res.status(403).json({ error: "Nutritionist not found" });
   }
 
-  const { first_name, last_name, phone, email } = req.body;
+const {
+  first_name,
+  last_name,
+  phone,
+  email,
+  birth_date,
+  height_cm,
+  weight_kg,
+  gender,
+} = req.body;
 
   const { data, error: insertError } = await supabase
     .from("patients")
@@ -345,7 +360,11 @@ app.post("/patients", authMiddleware, async (req: AuthRequest, res) => {
         last_name,
         phone,
         email,
-        nutritionist_id: nutritionist.id, // 🔥 CLAVE
+        birth_date,
+        height_cm,
+        weight_kg,
+        gender,
+        nutritionist_id: nutritionist.id,
       },
     ])
     .select()
