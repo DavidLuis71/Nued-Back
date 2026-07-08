@@ -91,20 +91,25 @@ router.post("/save-calculation", authMiddleware, async (req, res) => {
 
   const { data, error } = await supabase
     .from("patient_calculations")
-    .insert([
-      {
-        patient_id,
-        formula_id,
-        activity_factor_id,
-        age,
-        weight_kg,
-        height_cm,
-        ideal_weight_kg,
-        adjusted_weight_kg,
-        ger,
-        get,
-      },
-    ])
+.upsert(
+  [
+    {
+      patient_id,
+      formula_id,
+      activity_factor_id,
+      age,
+      weight_kg,
+      height_cm,
+      ideal_weight_kg,
+      adjusted_weight_kg,
+      ger,
+      get,
+    },
+  ],
+  {
+    onConflict: "patient_id",
+  }
+)
     .select()
     .single();
 
@@ -131,7 +136,7 @@ router.post("/save-plan", authMiddleware, async (req, res) => {
 
   const { data, error } = await supabase
     .from("patient_nutrition_plans")
-    .insert([
+    .upsert([
       {
         patient_id,
         calculation_id,
@@ -145,8 +150,25 @@ router.post("/save-plan", authMiddleware, async (req, res) => {
         fat_kcal,
         notes,
       },
-    ])
+    ],
+  {
+    onConflict: "patient_id",
+  })
     .select()
+    .single();
+
+  if (error) return res.status(500).json(error);
+
+  res.json(data);
+});
+
+router.get("/last-calculation/:patientId", authMiddleware, async (req, res) => {
+  const { patientId } = req.params;
+
+  const { data, error } = await supabase
+    .from("patient_calculations")
+    .select("*")
+    .eq("patient_id", patientId)
     .single();
 
   if (error) return res.status(500).json(error);
